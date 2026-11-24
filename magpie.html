@@ -21,30 +21,41 @@
   /* 幻灯片：叠放，仅 active 可见 */
   .slide {
     position:absolute; width:min(94vw, calc(88vh * 16 / 9)); aspect-ratio:16/9;
-    opacity:0; visibility:hidden; transform:scale(.965) translateY(10px);
-    transition: opacity .55s cubic-bezier(.4,0,.2,1),
-                transform .8s cubic-bezier(.22,1,.36,1),
-                filter .55s ease;
-    filter:blur(6px);
+    opacity:0; visibility:hidden; transform:scale(1.10) translateY(36px);
+    transition: opacity .95s cubic-bezier(.4,0,.2,1),
+                transform 1.15s cubic-bezier(.16,1,.3,1),
+                filter .95s ease;
+    filter:blur(18px);
     background:var(--ink);
     box-shadow:0 30px 90px rgba(0,0,0,.7);
   }
-  .slide.active { opacity:1; visibility:visible; transform:scale(1) translateY(0); filter:blur(0); z-index:2; }
-  .slide.out { opacity:0; transform:scale(1.035) translateY(-8px); filter:blur(8px); z-index:1; }
+  .slide.active { opacity:1; visibility:visible; transform:scale(1) translateY(0); filter:blur(0); z-index:3; }
+  .slide.out { opacity:0; transform:scale(.92) translateY(-28px); filter:blur(22px); z-index:2; }
   .slide-inner { width:100%; height:100%; }
   .slide-inner svg { width:100%; height:100%; display:block; }
 
-  /* 血红掠过转场 */
+  /* 血红幕布：合拢 → 撕开，遮住切换瞬间，露出新页 */
   #wipe {
-    position:fixed; top:0; left:0; width:100%; height:100%;
-    background:linear-gradient(90deg, transparent, var(--blood) 45%, var(--blood-dark) 55%, transparent);
-    transform:translateX(-120%); opacity:0; pointer-events:none; z-index:40;
+    position:fixed; inset:0; pointer-events:none; z-index:40; opacity:0;
+    background:linear-gradient(90deg, var(--blood-dark) 0%, var(--blood) 28%, #ff2e1c 50%, var(--blood) 72%, var(--blood-dark) 100%);
+    transform:scaleX(0) scaleY(1.04); transform-origin:center;
   }
-  #wipe.sweep { animation:sweep .85s cubic-bezier(.7,0,.3,1); }
+  #wipe.sweep { animation:sweep 1.05s cubic-bezier(.76,0,.24,1); }
   @keyframes sweep {
-    0% { transform:translateX(-120%); opacity:.9; }
-    50% { opacity:.95; }
-    100% { transform:translateX(120%); opacity:0; }
+    0% { transform:scaleX(0) scaleY(1.04); opacity:0; }
+    20% { transform:scaleX(1) scaleY(1.04); opacity:.92; }
+    78% { transform:scaleX(1) scaleY(1.04); opacity:.92; }
+    100% { transform:scaleX(0) scaleY(1.04); opacity:0; }
+  }
+
+  /* 血红闪光：切换起点的短暂闪烁，强化"诡异"感 */
+  #flash {
+    position:fixed; inset:0; pointer-events:none; z-index:39; opacity:0;
+    background:radial-gradient(circle at 50% 50%, rgba(164,22,28,.55), transparent 70%);
+  }
+  #flash.blink { animation:blink .5s ease-out; }
+  @keyframes blink {
+    0% { opacity:0; } 22% { opacity:1; } 100% { opacity:0; }
   }
 
   /* 顶部信息条 */
@@ -514,6 +525,7 @@
 </div>
 
 <div id="wipe"></div>
+<div id="flash"></div>
 
 <div id="topbar">
   <div id="brand">谁杀死了真相？ <small>MAGPIE MURDERS STYLE</small></div>
@@ -558,22 +570,18 @@
   const chapNames = slides.map(s=>s.dataset.chap);
   let cur = 0, busy = false;
   const wipe = document.getElementById('wipe');
+  const flash = document.getElementById('flash');
   const chapterEl = document.getElementById('chapter');
   const curEl = document.getElementById('cur');
   const prevBtn = document.getElementById('prev');
   const nextBtn = document.getElementById('next');
 
-  function render(idx, animate=true){
-    if(idx<0 || idx>=slides.length || idx===cur) return;
-    if(animate){
-      busy = true;
-      wipe.classList.remove('sweep'); void wipe.offsetWidth; wipe.classList.add('sweep');
-    }
+  function applySlide(idx){
     const old = slides[cur];
     const now = slides[idx];
     old.classList.remove('active');
     old.classList.add('out');
-    setTimeout(()=>old.classList.remove('out'), 850);
+    setTimeout(()=>old.classList.remove('out'), 1300);
     now.classList.remove('out');
     now.classList.add('active');
     cur = idx;
@@ -582,7 +590,17 @@
     curEl.textContent = (cur+1);
     prevBtn.disabled = (cur===0);
     nextBtn.disabled = (cur===slides.length-1);
-    if(animate) setTimeout(()=>{ busy=false; }, 700);
+  }
+
+  function render(idx, animate=true){
+    if(idx<0 || idx>=slides.length || idx===cur || busy) return;
+    if(!animate){ applySlide(idx); return; }
+    busy = true;
+    // 红幕合拢（0→满屏约 0.21s）+ 闪光，在幕布最厚时换页，再撕开露出新页
+    wipe.classList.remove('sweep'); void wipe.offsetWidth; wipe.classList.add('sweep');
+    flash.classList.remove('blink'); void flash.offsetWidth; flash.classList.add('blink');
+    setTimeout(()=>applySlide(idx), 230);
+    setTimeout(()=>{ busy=false; }, 1080);
   }
   function go(step){ render(cur+step); }
 
