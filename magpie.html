@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>谁杀死了真相？ — 喜鹊谋杀案风格演示</title>
+<style>
+  :root {
+    --ink:#121212; --paper:#F2EFE9; --blood:#A4161C; --blood-dark:#6E1116;
+    --muted:#A8A29A; --line:#3A3330; --panel:#1E1A1A;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; }
+  body {
+    background:var(--ink); color:var(--paper);
+    font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+    overflow:hidden; user-select:none;
+  }
+  #stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+
+  /* 幻灯片：叠放，仅 active 可见 */
+  .slide {
+    position:absolute; width:min(94vw, calc(88vh * 16 / 9)); aspect-ratio:16/9;
+    opacity:0; visibility:hidden; transform:scale(.965) translateY(10px);
+    transition: opacity .55s cubic-bezier(.4,0,.2,1),
+                transform .8s cubic-bezier(.22,1,.36,1),
+                filter .55s ease;
+    filter:blur(6px);
+    background:var(--ink);
+    box-shadow:0 30px 90px rgba(0,0,0,.7);
+  }
+  .slide.active { opacity:1; visibility:visible; transform:scale(1) translateY(0); filter:blur(0); z-index:2; }
+  .slide.out { opacity:0; transform:scale(1.035) translateY(-8px); filter:blur(8px); z-index:1; }
+  .slide-inner { width:100%; height:100%; }
+  .slide-inner svg { width:100%; height:100%; display:block; }
+
+  /* 血红掠过转场 */
+  #wipe {
+    position:fixed; top:0; left:0; width:100%; height:100%;
+    background:linear-gradient(90deg, transparent, var(--blood) 45%, var(--blood-dark) 55%, transparent);
+    transform:translateX(-120%); opacity:0; pointer-events:none; z-index:40;
+  }
+  #wipe.sweep { animation:sweep .85s cubic-bezier(.7,0,.3,1); }
+  @keyframes sweep {
+    0% { transform:translateX(-120%); opacity:.9; }
+    50% { opacity:.95; }
+    100% { transform:translateX(120%); opacity:0; }
+  }
+
+  /* 顶部信息条 */
+  #topbar {
+    position:fixed; top:0; left:0; right:0; height:52px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 26px; z-index:30; pointer-events:none;
+    background:linear-gradient(180deg, rgba(18,18,18,.85), transparent);
+  }
+  #brand { font-size:13px; letter-spacing:3px; color:var(--blood); font-weight:bold; }
+  #brand small { color:var(--muted); font-weight:normal; letter-spacing:1px; }
+  #chapter { font-size:13px; color:var(--muted); letter-spacing:2px; }
+
+  /* 底部控制 */
+  #bottom {
+    position:fixed; bottom:0; left:0; right:0; z-index:30;
+    display:flex; align-items:center; gap:18px;
+    padding:16px 26px 20px;
+    background:linear-gradient(0deg, rgba(18,18,18,.92), transparent);
+  }
+  .nav-btn {
+    flex:none; width:44px; height:44px; border-radius:50%;
+    border:1px solid var(--line); background:var(--panel); color:var(--paper);
+    font-size:20px; cursor:pointer; display:grid; place-items:center;
+    transition:all .2s ease;
+  }
+  .nav-btn:hover { border-color:var(--blood); color:var(--blood); transform:scale(1.08); }
+  .nav-btn:disabled { opacity:.3; cursor:default; transform:none; border-color:var(--line); color:var(--muted); }
+  #dots { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; }
+  .dot {
+    width:26px; height:5px; border:none; border-radius:2px; cursor:pointer;
+    background:var(--line); transition:all .35s ease; padding:0;
+  }
+  .dot:hover { background:var(--blood-dark); }
+  .dot.active { background:var(--blood); width:40px; }
+  #counter { flex:none; font-size:14px; color:var(--muted); letter-spacing:1px; min-width:64px; text-align:right; }
+  #counter b { color:var(--paper); font-size:20px; }
+  .tool-btn {
+    flex:none; width:38px; height:38px; border-radius:8px;
+    border:1px solid var(--line); background:transparent; color:var(--muted);
+    font-size:16px; cursor:pointer; display:grid; place-items:center; transition:all .2s;
+  }
+  .tool-btn:hover { border-color:var(--blood); color:var(--paper); }
+
+  /* 帮助浮层 */
+  #help {
+    position:fixed; inset:0; z-index:60; display:none;
+    align-items:center; justify-content:center; background:rgba(0,0,0,.82);
+  }
+  #help.show { display:flex; }
+  #help .box {
+    border:1px solid var(--blood); background:var(--ink);
+    padding:36px 44px; max-width:520px;
+  }
+  #help h2 { color:var(--blood); letter-spacing:4px; margin-bottom:20px; font-size:22px; }
+  #help p { color:var(--paper); line-height:2; font-size:15px; }
+  #help kbd { display:inline-block; min-width:26px; text-align:center; padding:2px 8px; margin:0 3px;
+    border:1px solid var(--line); border-radius:4px; background:var(--panel); color:var(--paper); font-family:monospace; }
+
+  /* 点击翻页热区 */
+  #clickzone { position:fixed; inset:52px 0 80px; display:flex; z-index:10; pointer-events:none; }
+  #clickzone .half { flex:1; pointer-events:auto; cursor:pointer; }
+
+  @media (max-width:640px) {
+    #brand small, #chapter { display:none; }
+    #bottom { gap:10px; padding:12px 14px 16px; }
+    .dot { width:16px; } .dot.active { width:26px; }
+    #counter { min-width:52px; font-size:12px; } #counter b { font-size:16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+      <section class="slide active" data-idx="0" data-chap="封面" aria-label="第1页 谁杀死了真相？">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="cover" font-family="Microsoft YaHei, Georgia">
+  <defs>
+    <radialGradient id="bgGlow0" cx="68%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#241A1B"/>
+      <stop offset="100%" stop-color="#121212"/>
+    </radialGradient>
+  </defs>
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="url(#bgGlow0)"/>
+
+  <g id="case-number" data-pptx-bounds="72 58 520 34">
+    <text x="72" y="84" font-size="20" fill="#A4161C" letter-spacing="3">CASE No. 2018 — 10 — 28</text>
+  </g>
+  <g id="top-rule" data-pptx-role="decoration" data-pptx-bounds="72 98 1136 2">
+    <rect x="72" y="98" width="1136" height="2" fill="#3A3330"/>
+  </g>
+
+  <g id="cover-title" data-pptx-bounds="72 232 660 268">
+    <text x="72" y="330" font-size="84" font-weight="bold" fill="#F2EFE9">谁杀死了</text>
+    <text x="72" y="440" font-size="84" font-weight="bold" fill="#A4161C">真相？</text>
+  </g>
+
+  <g id="blood-drops" data-pptx-role="decoration" data-pptx-bounds="540 250 120 210">
+    <path d="M598 268 C 604 286, 612 298, 612 312 A 14 14 0 0 1 584 312 C 584 298, 592 286, 598 268 Z" fill="#A4161C"/>
+    <circle cx="640" cy="360" r="7" fill="#A4161C"/>
+    <circle cx="628" cy="410" r="4" fill="#6E1116"/>
+    <circle cx="650" cy="438" r="5" fill="#A4161C"/>
+  </g>
+
+  <g id="magpie" data-pptx-bounds="762 138 446 470">
+    <path d="M815 268 C 800 250, 806 230, 827 226 C 848 222, 862 236, 863 254 C 898 266, 934 296, 966 338 C 1006 390, 1048 440, 1092 482 L 1152 540 L 1138 546 C 1086 490, 1034 448, 992 412 C 950 376, 914 354, 878 348 C 848 343, 826 322, 816 296 Z" fill="#F2EFE9"/>
+    <path d="M786 262 L 812 270 L 788 280 Z" fill="#A4161C"/>
+    <path d="M862 300 C 902 312, 946 344, 984 384 C 1010 410, 1034 436, 1058 460 C 1016 440, 978 414, 944 388 C 912 364, 884 344, 862 330 Z" fill="#121212"/>
+    <circle cx="830" cy="252" r="4.5" fill="#A4161C"/>
+    <rect x="892" y="352" width="26" height="7" fill="#121212" transform="rotate(38 892 352)"/>
+    <rect x="924" y="384" width="22" height="6" fill="#121212" transform="rotate(38 924 384)"/>
+    <line x1="872" y1="344" x2="868" y2="470" stroke="#F2EFE9" stroke-width="4"/>
+    <line x1="896" y1="348" x2="900" y2="470" stroke="#F2EFE9" stroke-width="4"/>
+    <path d="M856 470 L 868 470 L 860 484 Z M884 470 L 900 470 L 908 484 Z" fill="#F2EFE9"/>
+    <line x1="812" y1="474" x2="960" y2="474" stroke="#3A3330" stroke-width="7"/>
+    <line x1="884" y1="474" x2="918" y2="448" stroke="#3A3330" stroke-width="5"/>
+  </g>
+
+  <g id="cover-subtitle" data-pptx-bounds="72 526 620 54">
+    <text x="72" y="562" font-size="40" fill="#E8E4DB">一场关于新闻叙事的调查</text>
+  </g>
+
+  <g id="cover-source" data-pptx-bounds="72 620 700 30">
+    <text x="72" y="640" font-size="16" fill="#A8A29A">基于 2018 重庆万州公交坠江案的媒介叙事分析  ·  悬疑推理 × 新闻传播</text>
+  </g>
+  <g id="cover-mark" data-pptx-role="decoration" data-pptx-bounds="1150 620 58 30">
+    <text x="1150" y="640" font-size="20" font-weight="bold" fill="#A4161C">01</text>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="1" data-chap="目录" aria-label="第2页 卷宗目录">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="toc" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212"/>
+
+  <g id="toc-header" data-pptx-bounds="72 48 1136 112">
+    <text x="72" y="88" font-size="20" fill="#A4161C" letter-spacing="3">CONTENTS</text>
+    <text x="72" y="136" font-size="56" font-weight="bold" fill="#F2EFE9">卷宗目录</text>
+  </g>
+  <g id="toc-rule" data-pptx-role="decoration" data-pptx-bounds="72 170 1136 2">
+    <rect x="72" y="170" width="1136" height="2" fill="#3A3330"/>
+  </g>
+
+  <g id="toc-item-1" data-pptx-bounds="96 206 1000 78">
+    <text x="96" y="262" font-size="56" font-weight="bold" fill="#A4161C">01</text>
+    <text x="210" y="256" font-size="28" fill="#F2EFE9">谜面</text>
+    <text x="360" y="256" font-size="22" fill="#A8A29A">一夜之间，凶手已定</text>
+  </g>
+  <g id="toc-item-2" data-pptx-bounds="128 292 1000 78">
+    <text x="128" y="348" font-size="56" font-weight="bold" fill="#A4161C">02</text>
+    <text x="242" y="342" font-size="28" fill="#F2EFE9">嫌疑人</text>
+    <text x="396" y="342" font-size="22" fill="#A8A29A">三个"凶手"</text>
+  </g>
+  <g id="toc-item-3" data-pptx-bounds="160 378 1000 78">
+    <text x="160" y="434" font-size="56" font-weight="bold" fill="#A4161C">03</text>
+    <text x="274" y="428" font-size="28" fill="#F2EFE9">线索板</text>
+    <text x="428" y="428" font-size="22" fill="#A8A29A">三层反转的 72 小时</text>
+  </g>
+  <g id="toc-item-4" data-pptx-bounds="192 464 1000 78">
+    <text x="192" y="520" font-size="56" font-weight="bold" fill="#A4161C">04</text>
+    <text x="306" y="514" font-size="28" fill="#F2EFE9">侦查</text>
+    <text x="460" y="514" font-size="22" fill="#A8A29A">真相如何被"杀"</text>
+  </g>
+  <g id="toc-item-5" data-pptx-bounds="224 550 1000 78">
+    <text x="224" y="606" font-size="56" font-weight="bold" fill="#A4161C">05</text>
+    <text x="338" y="600" font-size="28" fill="#F2EFE9">结案</text>
+    <text x="492" y="600" font-size="22" fill="#A8A29A">没有凶手的谋杀</text>
+  </g>
+
+  <g id="toc-lens" data-pptx-role="decoration" data-pptx-bounds="1040 470 176 176">
+    <circle cx="1128" cy="558" r="62" fill="none" stroke="#6E1116" stroke-width="6"/>
+    <circle cx="1128" cy="558" r="50" fill="#A4161C" fill-opacity="0.08"/>
+    <line x1="1172" y1="602" x2="1196" y2="626" stroke="#A4161C" stroke-width="10"/>
+  </g>
+
+  <g id="toc-footer" data-pptx-bounds="72 668 500 26">
+    <text x="72" y="686" font-size="16" fill="#A8A29A">五步侦破一场没有凶手的谋杀</text>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="2" data-chap="谜面" aria-label="第3页 一夜之间，凶手已定">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="content" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212" />
+
+  <g id="p03-header" data-pptx-bounds="72 48 1136 112">
+    <text x="72" y="88" font-size="20" fill="#A4161C" letter-spacing="3">01 / 谜面</text>
+    <text x="72" y="136" font-size="56" font-weight="bold" fill="#F2EFE9">一夜之间，凶手已定</text>
+  </g>
+  <g id="p03-rule" data-pptx-role="decoration" data-pptx-bounds="72 170 1136 2">
+    <rect x="72" y="170" width="1136" height="2" fill="#3A3330" />
+  </g>
+
+  <g id="p03-bignum" data-pptx-bounds="72 194 480 210">
+    <text x="72" y="346" font-size="150" font-weight="bold" fill="#A4161C">10.28</text>
+  </g>
+
+  <g id="p03-fact" data-pptx-bounds="566 200 620 180">
+    <text x="566" y="236" font-size="28" fill="#E8E4DB">2018 年 10 月 28 日</text>
+    <text fill="#A8A29A" font-size="22" x="566" y="280">重庆万州长江二桥，公交坠江</text><text fill="#A8A29A" font-size="22" x="566" y="320">车上 15 人，无一生还</text><text x="566" y="366" font-size="22" fill="#A4161C">事故刚发生，凶手已被"认定"</text>
+  </g>
+
+  <g id="headline-wall" data-pptx-bounds="72 404 1136 196">
+    <rect x="72" y="408" width="1080" height="48" fill="#F2EFE9" transform="rotate(-1.5 72 408)" />
+    <text x="92" y="442" font-size="30" font-weight="bold" fill="#121212" transform="rotate(-1.5 92 442)">"女司机逆行"致公交坠江</text>
+
+    <rect x="150" y="466" width="900" height="48" fill="#A4161C" transform="rotate(1 150 466)" />
+    <text x="172" y="500" font-size="30" font-weight="bold" fill="#F2EFE9" transform="rotate(1 172 500)">穿高跟鞋开车，为了躲避她公交才坠江</text>
+
+    <rect x="96" y="524" width="1020" height="48" fill="#2A2222" transform="rotate(-0.5 96 524)" />
+    <text x="118" y="558" font-size="28" fill="#E8E4DB" transform="rotate(-0.5 118 558)">部分媒体与政府应急办工作人员背书该说法</text>
+  </g>
+
+  <g id="p03-bot" data-pptx-bounds="72 622 1080 44">
+    <text x="72" y="652" font-size="28" font-weight="bold" fill="#A4161C">公众声讨：对女司机群体的谩骂刷屏</text>
+    
+  <g transform="translate(1160, 622) scale(2.75)" fill="#6E1116">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M3.0598e-07 11C3.78403e-07 12.6569 1.34315 14 3 14L13 14C14.6569 14 16 12.6569 16 11V2L4 2L4 11H2L2 4H0L3.0598e-07 11ZM6 4L14 4V6H6V4ZM14 8H6L6 10H14V8Z" />
+  </g>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="3" data-chap="嫌疑人" aria-label="第4页 三个凶手">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="content" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212" />
+
+  <g id="p04-header" data-pptx-bounds="72 48 1136 112">
+    <text x="72" y="88" font-size="20" fill="#A4161C" letter-spacing="3">02 / 嫌疑人</text>
+    <text x="72" y="136" font-size="56" font-weight="bold" fill="#F2EFE9">三个"凶手"</text>
+  </g>
+  <g id="p04-rule" data-pptx-role="decoration" data-pptx-bounds="72 170 1136 2">
+    <rect x="72" y="170" width="1136" height="2" fill="#3A3330" />
+  </g>
+  <g id="p04-lead" data-pptx-bounds="72 186 1050 40">
+    <text x="72" y="214" font-size="22" fill="#A8A29A">杀死真相的，从来不是某一个人——而是三种叙事力量</text>
+  </g>
+
+  <g id="suspect-1" data-pptx-bounds="72 244 352 372">
+    <rect x="72" y="244" width="352" height="372" fill="#1E1A1A" />
+    <rect x="72" y="244" width="352" height="5" fill="#A4161C" />
+    <text x="96" y="316" font-size="56" font-weight="bold" fill="#A4161C">01</text>
+    
+  <g transform="translate(330, 272) scale(4)" fill="#6E1116">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M3.0598e-07 11C3.78403e-07 12.6569 1.34315 14 3 14L13 14C14.6569 14 16 12.6569 16 11V2L4 2L4 11H2L2 4H0L3.0598e-07 11ZM6 4L14 4V6H6V4ZM14 8H6L6 10H14V8Z" />
+  </g>
+    <path d="M248 372 a 40 40 0 1 1 0.1 0 Z M180 500 C 180 424, 316 424, 316 500 Z" fill="#F2EFE9" fill-opacity="0.14" />
+    <text x="96" y="452" font-size="28" font-weight="bold" fill="#F2EFE9">抢发的媒体</text>
+    <text fill="#E8E4DB" font-size="22" x="96" y="496">速度压倒核实</text><text fill="#E8E4DB" font-size="22" x="96" y="536">抢先发布，抢先定性</text><text x="96" y="590" font-size="18" fill="#A8A29A">未等调查，先上标题</text>
+  </g>
+
+  <g id="suspect-2" data-pptx-bounds="464 244 352 372">
+    <rect x="464" y="244" width="352" height="372" fill="#1E1A1A" />
+    <rect x="464" y="244" width="352" height="5" fill="#A4161C" />
+    <text x="488" y="316" font-size="56" font-weight="bold" fill="#A4161C">02</text>
+    
+  <g transform="translate(722, 272) scale(4)" fill="#6E1116">
+    <path d="M8.00006 3C8.82849 3 9.50006 2.32843 9.50006 1.5C9.50006 0.671573 8.82849 0 8.00006 0C7.17163 0 6.50006 0.671573 6.50006 1.5C6.50006 2.32843 7.17163 3 8.00006 3Z" />
+    <path d="M15 4V6H10.5454L10.9898 16H8.98778L8.76561 11H7.23426L7.01198 16H5.01L5.45456 6H1V4H15Z" />
+  </g>
+    <path d="M640 372 a 40 40 0 1 1 0.1 0 Z M572 500 C 572 424, 708 424, 708 500 Z" fill="#F2EFE9" fill-opacity="0.14" />
+    <text x="488" y="452" font-size="28" font-weight="bold" fill="#F2EFE9">标签化叙事</text>
+    <text fill="#E8E4DB" font-size="22" x="488" y="496">"女司机"污名模板</text><text fill="#E8E4DB" font-size="22" x="488" y="536">用身份替代事实</text><text x="488" y="590" font-size="18" fill="#A8A29A">一个标签，完成定罪</text>
+  </g>
+
+  <g id="suspect-3" data-pptx-bounds="856 244 352 372">
+    <rect x="856" y="244" width="352" height="372" fill="#1E1A1A" />
+    <rect x="856" y="244" width="352" height="5" fill="#A4161C" />
+    <text x="880" y="316" font-size="56" font-weight="bold" fill="#A4161C">03</text>
+    
+  <g transform="translate(1114, 272) scale(4)" fill="#6E1116">
+    <path d="M8 3.5C8 4.88071 6.88071 6 5.5 6C4.11929 6 3 4.88071 3 3.5C3 2.11929 4.11929 1 5.5 1C6.88071 1 8 2.11929 8 3.5Z" />
+    <path d="M3 8C1.34315 8 0 9.34315 0 11V15H8V8H3Z" />
+    <path d="M13 8H10V15H16V11C16 9.34315 14.6569 8 13 8Z" />
+    <path d="M12 6C13.1046 6 14 5.10457 14 4C14 2.89543 13.1046 2 12 2C10.8954 2 10 2.89543 10 4C10 5.10457 10.8954 6 12 6Z" />
+  </g>
+    <path d="M1032 372 a 40 40 0 1 1 0.1 0 Z M964 500 C 964 424, 1100 424, 1100 500 Z" fill="#F2EFE9" fill-opacity="0.14" />
+    <text x="880" y="452" font-size="28" font-weight="bold" fill="#F2EFE9">后真相情绪</text>
+    <text fill="#E8E4DB" font-size="22" x="880" y="496">公众急于站队</text><text fill="#E8E4DB" font-size="22" x="880" y="536">情绪先于事实</text><text x="880" y="590" font-size="18" fill="#A8A29A">立场决定相信什么</text>
+  </g>
+
+  <g id="p04-footer" data-pptx-bounds="72 654 700 30">
+    <text x="72" y="678" font-size="16" fill="#A8A29A">三者合谋，构成了一场"没有凶手的谋杀"</text>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="4" data-chap="线索板" aria-label="第5页 三层反转的 72 小时">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="content" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212" />
+
+  <g id="p05-header" data-pptx-bounds="72 48 1136 112">
+    <text x="72" y="88" font-size="20" fill="#A4161C" letter-spacing="3">03 / 线索板</text>
+    <text x="72" y="136" font-size="56" font-weight="bold" fill="#F2EFE9">三层反转的 72 小时</text>
+  </g>
+  <g id="p05-rule" data-pptx-role="decoration" data-pptx-bounds="72 170 1136 2">
+    <rect x="72" y="170" width="1136" height="2" fill="#3A3330" />
+  </g>
+  <g id="p05-lead" data-pptx-bounds="72 186 1000 40">
+    <text x="72" y="214" font-size="22" fill="#A8A29A">真相每翻一层，旧版本就被"杀死"一次</text>
+  </g>
+
+  <g id="timeline-axis" data-pptx-role="decoration" data-pptx-bounds="120 358 1040 6">
+    <line x1="120" y1="360" x2="1160" y2="360" stroke="#A4161C" stroke-width="5" />
+    <polygon points="1160,360 1144,352 1144,368" fill="#A4161C" />
+  </g>
+
+  <g id="stage-1" data-pptx-bounds="80 244 330 344">
+    <text x="100" y="288" font-size="22" fill="#A4161C" font-weight="bold">10.28 初期</text>
+    <circle cx="120" cy="360" r="13" fill="#F2EFE9" />
+    <rect x="100" y="394" width="300" height="4" fill="#3A3330" />
+    <text x="100" y="438" font-size="28" font-weight="bold" fill="#F2EFE9">第一层叙事</text>
+    <text fill="#E8E4DB" font-size="22" x="100" y="480">"女司机逆行致坠江"</text><text fill="#E8E4DB" font-size="22" x="100" y="518">媒体背书，舆论定罪</text><rect x="100" y="534" width="150" height="34" fill="#6E1116" />
+    <text x="112" y="558" font-size="18" fill="#F2EFE9">女司机=凶手</text>
+  </g>
+
+  <g id="stage-2" data-pptx-bounds="474 244 330 344">
+    <text x="494" y="288" font-size="22" fill="#A4161C" font-weight="bold">10.28 17 时</text>
+    <circle cx="514" cy="360" r="13" fill="#F2EFE9" />
+    <rect x="494" y="394" width="300" height="4" fill="#3A3330" />
+    <text x="494" y="438" font-size="28" font-weight="bold" fill="#F2EFE9">警方通报</text>
+    <text fill="#E8E4DB" font-size="22" x="494" y="480">公交越过中心实线，</text><text fill="#E8E4DB" font-size="22" x="494" y="518">撞对向正常行驶轿车</text><rect x="494" y="534" width="176" height="34" fill="#A4161C" />
+    <text x="506" y="558" font-size="18" fill="#F2EFE9">反转① 女司机无责</text>
+  </g>
+
+  <g id="stage-3" data-pptx-bounds="868 244 344 344">
+    <text x="888" y="288" font-size="22" fill="#A4161C" font-weight="bold">11.2 官方公布</text>
+    <circle cx="908" cy="360" r="13" fill="#F2EFE9" />
+    <rect x="888" y="394" width="300" height="4" fill="#3A3330" />
+    <text x="888" y="438" font-size="28" font-weight="bold" fill="#F2EFE9">黑匣子真相</text>
+    <text fill="#E8E4DB" font-size="22" x="888" y="480">乘客与司机争执，</text><text fill="#E8E4DB" font-size="22" x="888" y="518">互殴致车辆失控</text><rect x="888" y="534" width="176" height="34" fill="#A4161C" />
+    <text x="900" y="558" font-size="18" fill="#F2EFE9">反转② 真凶是互殴</text>
+  </g>
+
+  <g id="p05-footer" data-pptx-bounds="72 636 900 40">
+    
+  <g transform="translate(72, 638) scale(2)" fill="#A4161C">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M14 2H13V4.41421L9.41421 8L13 11.5858V14H14V16H2V14H3V11.5858L6.58579 8L3 4.41421V2H2V0H14V2ZM5 2V3.58579L8 6.58579L11 3.58579V2H5ZM8 9.41421L5 12.4142V14H11V12.4142L8 9.41421Z" />
+  </g>
+    <text x="116" y="662" font-size="20" fill="#E8E4DB">15 条生命，在一次次的"抢先报道"里被反复叙述</text>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="5" data-chap="侦查" aria-label="第6页 真相如何被杀">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="content" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212" />
+
+  <g id="p06-header" data-pptx-bounds="72 48 1136 112">
+    <text x="72" y="88" font-size="20" fill="#A4161C" letter-spacing="3">04 / 侦查</text>
+    <text x="72" y="136" font-size="56" font-weight="bold" fill="#F2EFE9">真相如何被"杀"</text>
+  </g>
+  <g id="p06-rule" data-pptx-role="decoration" data-pptx-bounds="72 170 1136 2">
+    <rect x="72" y="170" width="1136" height="2" fill="#3A3330" />
+  </g>
+  <g id="p06-lead" data-pptx-bounds="72 186 1050 40">
+    <text x="72" y="214" font-size="22" fill="#A8A29A">叙事机制，才是这场谋杀真正的凶手</text>
+  </g>
+
+  <g id="book-stack" data-pptx-bounds="632 244 508 340">
+    <g id="book-3">
+      <rect x="700" y="260" width="440" height="300" fill="#1E1A1A" stroke="#3A3330" stroke-width="2" transform="rotate(4 700 260)" />
+      <text x="726" y="316" font-size="56" font-weight="bold" fill="#6E1116" transform="rotate(4 726 316)">03</text>
+    </g>
+    <g id="book-2">
+      <rect x="660" y="252" width="440" height="300" fill="#1E1A1A" stroke="#3A3330" stroke-width="2" transform="rotate(-2 660 252)" />
+      <text x="686" y="308" font-size="56" font-weight="bold" fill="#6E1116" transform="rotate(-2 686 308)">02</text>
+    </g>
+    <g id="book-1">
+      <rect x="632" y="248" width="440" height="300" fill="#2A2222" stroke="#A4161C" stroke-width="2" />
+      <text x="658" y="304" font-size="56" font-weight="bold" fill="#A4161C">01</text>
+      
+  <g transform="translate(960, 262) scale(3.5)" fill="#6E1116">
+    <path d="M5 0C3.34315 0 2 1.34315 2 3V13C2 14.6569 3.34315 16 5 16H14V14H4V12H14V0H5Z" />
+  </g>
+    </g>
+  </g>
+
+  <g id="theory-list" data-pptx-bounds="72 250 540 360">
+    <text x="72" y="292" font-size="28" font-weight="bold" fill="#F2EFE9">首因效应</text>
+    <text x="72" y="326" font-size="22" fill="#E8E4DB">第一波叙事抢占认知，澄清难以覆盖</text>
+
+    <rect x="72" y="346" width="520" height="2" fill="#3A3330" />
+    <text x="72" y="388" font-size="28" font-weight="bold" fill="#F2EFE9">框架理论</text>
+    <text x="72" y="422" font-size="22" fill="#E8E4DB">同一事实经不同框架，产出相反"真相"</text>
+
+    <rect x="72" y="442" width="520" height="2" fill="#3A3330" />
+    <text x="72" y="484" font-size="28" font-weight="bold" fill="#F2EFE9">议程设置</text>
+    <text x="72" y="518" font-size="22" fill="#E8E4DB">抢发与标签化标题，决定公众"看什么、骂谁"</text>
+  </g>
+
+  <g id="p06-lens" data-pptx-role="decoration" data-pptx-bounds="1090 470 150 130">
+    <circle cx="1160" cy="524" r="48" fill="none" stroke="#A4161C" stroke-width="5" />
+    <line x1="1194" y1="558" x2="1212" y2="576" stroke="#A4161C" stroke-width="9" />
+  </g>
+
+  <g id="p06-footer" data-pptx-bounds="72 626 1136 84">
+    <text fill="#A4161C" font-size="20" x="72" y="646">映射《喜鹊谋杀案》"书中书"：层层嵌套、自我复制的叙事</text><text fill="#A8A29A" font-size="16" x="72" y="676">本页理论为新闻传播学分析框架（整理），非原报道内容</text></g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="6" data-chap="结案" aria-label="第7页 没有凶手的谋杀">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="content" font-family="Microsoft YaHei, Georgia">
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#121212"/>
+  <rect id="red-field" data-pptx-role="decoration" x="640" y="0" width="640" height="720" fill="#A4161C" fill-opacity="0.92"/>
+
+  <g id="p07-label" data-pptx-bounds="72 56 600 40">
+    <text x="72" y="84" font-size="20" fill="#A4161C" letter-spacing="3">05 / 结案</text>
+  </g>
+
+  <g id="p07-conclusion" data-pptx-bounds="72 150 1080 130">
+    <text x="72" y="196" font-size="28" fill="#C9B8B9">没有凶手的谋杀</text>
+    <text x="72" y="244" font-size="22" fill="#E8E4DB">真凶不是某个人，而是抢发 + 标签 + 情绪的整套叙事机制</text>
+  </g>
+
+  <g id="p07-quote" data-pptx-bounds="72 320 1136 230">
+    <text x="72" y="392" font-size="56" font-weight="bold" fill="#F2EFE9">真相不是被"发现"的，</text>
+    <text x="72" y="476" font-size="56" font-weight="bold" fill="#F2EFE9">是被"叙述"出来的。</text>
+    <rect x="72" y="504" width="120" height="4" fill="#F2EFE9"/>
+  </g>
+
+  <g id="p07-seal" data-pptx-role="decoration" data-pptx-bounds="960 150 200 140">
+    <rect x="980" y="164" width="160" height="112" fill="none" stroke="#F2EFE9" stroke-width="3" transform="rotate(-8 980 164)"/>
+    <text x="1000" y="232" font-size="30" font-weight="bold" fill="#F2EFE9" transform="rotate(-8 1000 232)">结案</text>
+  </g>
+
+  <g id="p07-footer" data-pptx-bounds="72 660 500 30">
+    <text x="72" y="682" font-size="16" fill="#E8E4DB">基于已核实案例的事实与新闻传播学分析</text>
+  </g>
+</svg></div>
+      </section>
+      <section class="slide" data-idx="7" data-chap="结尾" aria-label="第8页 CASE CLOSED?">
+        <div class="slide-inner"><svg preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="ending" font-family="Microsoft YaHei, Georgia">
+  <defs>
+    <radialGradient id="endGlow7" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#241A1B"/>
+      <stop offset="100%" stop-color="#121212"/>
+    </radialGradient>
+  </defs>
+  <rect id="bg" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="url(#endGlow7)"/>
+
+  <g id="end-magpie" data-pptx-role="decoration" data-pptx-bounds="540 40 220 150">
+    <path d="M600 92 C 590 82, 594 70, 610 68 C 626 66, 636 76, 636 88 C 662 96, 686 116, 706 144 C 722 164, 738 182, 754 196 L 726 186 C 704 168, 682 150, 662 136 C 642 122, 622 116, 610 112 C 596 108, 588 102, 600 92 Z" fill="#F2EFE9" fill-opacity="0.9"/>
+    <path d="M578 88 L 596 94 L 580 100 Z" fill="#A4161C"/>
+    <circle cx="612" cy="84" r="3.5" fill="#A4161C"/>
+  </g>
+
+  <g id="end-title" data-pptx-bounds="140 214 1000 130">
+    <text x="640" y="300" font-size="84" font-weight="bold" fill="#A4161C" text-anchor="middle">CASE CLOSED?</text>
+  </g>
+
+  <g id="end-reflect" data-pptx-bounds="240 360 800 120">
+    <text x="640" y="404" font-size="36" fill="#F2EFE9" text-anchor="middle">媒介素养，就是识别框架的能力</text>
+    <text x="640" y="456" font-size="22" fill="#A8A29A" text-anchor="middle">下一次看到"凶手已定"，先问一句：这是事实，还是叙事？</text>
+  </g>
+
+  <g id="end-question" data-pptx-bounds="240 520 800 80">
+    <text x="640" y="564" font-size="28" font-weight="bold" fill="#A4161C" text-anchor="middle">算法时代，下一个"女司机"会是谁？</text>
+  </g>
+
+  <g id="end-rule" data-pptx-role="decoration" data-pptx-bounds="500 620 280 2">
+    <rect x="500" y="620" width="280" height="2" fill="#3A3330"/>
+  </g>
+  <g id="end-footer" data-pptx-bounds="140 636 1000 40">
+    <text x="640" y="664" font-size="16" fill="#A8A29A" text-anchor="middle">悬疑推理 × 新闻传播  ·  基于 2018 重庆万州公交坠江案的媒介叙事分析</text>
+  </g>
+</svg></div>
+      </section>
+</div>
+
+<div id="clickzone">
+  <div class="half" id="prev-zone" title="上一页"></div>
+  <div class="half" id="next-zone" title="下一页"></div>
+</div>
+
+<div id="wipe"></div>
+
+<div id="topbar">
+  <div id="brand">谁杀死了真相？ <small>MAGPIE MURDERS STYLE</small></div>
+  <div id="chapter">封面</div>
+</div>
+
+<div id="bottom">
+  <button class="nav-btn" id="prev" title="上一页 (←)">&#8592;</button>
+  <div id="dots">
+      <button class="dot active" data-idx="0" title="1. 封面 — 谁杀死了真相？" aria-label="跳到第1页"></button>
+      <button class="dot" data-idx="1" title="2. 目录 — 卷宗目录" aria-label="跳到第2页"></button>
+      <button class="dot" data-idx="2" title="3. 谜面 — 一夜之间，凶手已定" aria-label="跳到第3页"></button>
+      <button class="dot" data-idx="3" title="4. 嫌疑人 — 三个凶手" aria-label="跳到第4页"></button>
+      <button class="dot" data-idx="4" title="5. 线索板 — 三层反转的 72 小时" aria-label="跳到第5页"></button>
+      <button class="dot" data-idx="5" title="6. 侦查 — 真相如何被杀" aria-label="跳到第6页"></button>
+      <button class="dot" data-idx="6" title="7. 结案 — 没有凶手的谋杀" aria-label="跳到第7页"></button>
+      <button class="dot" data-idx="7" title="8. 结尾 — CASE CLOSED?" aria-label="跳到第8页"></button>
+  </div>
+  <button class="nav-btn" id="next" title="下一页 (→)">&#8594;</button>
+  <div id="counter"><b id="cur">1</b> / 8</div>
+  <button class="tool-btn" id="fullscreen" title="全屏 (F)">&#9974;</button>
+  <button class="tool-btn" id="helpbtn" title="快捷键 (?)">?</button>
+</div>
+
+<div id="help">
+  <div class="box">
+    <h2>操作说明</h2>
+    <p>
+      <kbd>&#8592;</kbd><kbd>&#8594;</kbd> 翻页　<kbd>空格</kbd> 下一页<br>
+      <kbd>Home</kbd><kbd>End</kbd> 首页 / 末页<br>
+      点击画面左右两侧翻页<br>
+      <kbd>F</kbd> 全屏　<kbd>?</kbd> 显示本说明<br>
+      点击底部方块直接跳页
+    </p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const dots = Array.from(document.querySelectorAll('.dot'));
+  const chapNames = slides.map(s=>s.dataset.chap);
+  let cur = 0, busy = false;
+  const wipe = document.getElementById('wipe');
+  const chapterEl = document.getElementById('chapter');
+  const curEl = document.getElementById('cur');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+
+  function render(idx, animate=true){
+    if(idx<0 || idx>=slides.length || idx===cur) return;
+    if(animate){
+      busy = true;
+      wipe.classList.remove('sweep'); void wipe.offsetWidth; wipe.classList.add('sweep');
+    }
+    const old = slides[cur];
+    const now = slides[idx];
+    old.classList.remove('active');
+    old.classList.add('out');
+    setTimeout(()=>old.classList.remove('out'), 850);
+    now.classList.remove('out');
+    now.classList.add('active');
+    cur = idx;
+    dots.forEach((d,i)=>d.classList.toggle('active', i===cur));
+    chapterEl.textContent = chapNames[cur];
+    curEl.textContent = (cur+1);
+    prevBtn.disabled = (cur===0);
+    nextBtn.disabled = (cur===slides.length-1);
+    if(animate) setTimeout(()=>{ busy=false; }, 700);
+  }
+  function go(step){ render(cur+step); }
+
+  document.getElementById('prev').addEventListener('click', ()=>go(-1));
+  document.getElementById('next').addEventListener('click', ()=>go(1));
+  document.getElementById('prev-zone').addEventListener('click', ()=>go(-1));
+  document.getElementById('next-zone').addEventListener('click', ()=>go(1));
+  dots.forEach((d,i)=>d.addEventListener('click', ()=>render(i, i!==cur)));
+
+  document.addEventListener('keydown', e=>{
+    if(document.getElementById('help').classList.contains('show') && e.key!=='?' && e.key!=='Escape'){
+      document.getElementById('help').classList.remove('show'); return;
+    }
+    switch(e.key){
+      case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); go(1); break;
+      case 'ArrowLeft': case 'PageUp': e.preventDefault(); go(-1); break;
+      case 'Home': render(0); break;
+      case 'End': render(slides.length-1); break;
+      case 'f': case 'F': toggleFull(); break;
+      case '?': document.getElementById('help').classList.toggle('show'); break;
+      case 'Escape': document.getElementById('help').classList.remove('show'); break;
+    }
+  });
+
+  function toggleFull(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); }
+    else { document.exitFullscreen&&document.exitFullscreen(); }
+  }
+  document.getElementById('fullscreen').addEventListener('click', toggleFull);
+  document.getElementById('helpbtn').addEventListener('click', ()=>document.getElementById('help').classList.toggle('show'));
+  document.getElementById('help').addEventListener('click', ()=>document.getElementById('help').classList.remove('show'));
+
+  // 触摸滑动
+  let tx=0;
+  document.getElementById('stage').addEventListener('touchstart', e=>{ tx=e.changedTouches[0].clientX; }, {passive:true});
+  document.getElementById('stage').addEventListener('touchend', e=>{
+    const dx=e.changedTouches[0].clientX - tx;
+    if(Math.abs(dx)>60) go(dx<0?1:-1);
+  }, {passive:true});
+
+  prevBtn.disabled = true;
+  chapterEl.textContent = chapNames[0];
+})();
+</script>
+</body>
+</html>
